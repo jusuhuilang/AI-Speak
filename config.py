@@ -2,9 +2,7 @@ import os
 
 # DeepSeek API
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    # 测试时可临时填写，提交前务必改为环境变量
-    DEEPSEEK_API_KEY = "sk-你的真实key"  # 仅本地测试用
+
 
 # 系统提示词（出行助手）
 SYSTEM_PROMPT = (
@@ -17,3 +15,7 @@ SYSTEM_PROMPT = (
 
 # Vosk 模型路径
 VOSK_MODEL_PATH = "vosk-model-small-en-us-0.15"
+
+# ========== 自动情感识别配置 ==========
+CONFIDENCE_THRESHOLD = 0.3          # 低于此值弹出提示图片
+HINT_IMAGE_URL = "https://picsum.photos/id/104/300/200"   # 提示图片URL（可更换）
