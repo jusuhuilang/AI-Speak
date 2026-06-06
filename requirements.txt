@@ -5,3 +5,4 @@ speechrecognition==3.14.1
 librosa==0.11.0
 matplotlib==3.10.9
 requests==2.34.2
+language_tool_python>=2.7.0

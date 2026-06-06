@@ -3,6 +3,7 @@ from config import SYSTEM_PROMPT, CONFIDENCE_THRESHOLD, HINT_IMAGE_URL
 from tts import text_to_speech_sync
 from asr import transcribe_audio
 from utils import chat_with_deepseek
+from grammar import check_grammar   # 新增导入
 
 # ========== Gradio 界面 ==========
 with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Soft()) as demo:
@@ -18,16 +19,25 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
     with gr.Row():
         send_voice_btn = gr.Button("发送录音", variant="secondary")
         send_text_btn = gr.Button("发送文字", variant="primary")
-        # 已删除 low_confidence_btn
         clear_btn = gr.Button("清除对话历史")
     
     menu_img = gr.Image(value=None, label="🗺️ 出行提示", visible=False)
     audio_output = gr.Audio(label="AI 语音回复", autoplay=True, visible=True)
-    state = gr.State([])  # 对话历史
+    state = gr.State([])           # 对话历史
+    grammar_state = gr.State([])   # 新增：语法错误记录
 
-    def send_message(user_text, history):
+    def send_message(user_text, history, grammar_records):
         if not user_text.strip():
-            return "", history, history, gr.update(visible=False), None
+            return "", history, history, grammar_records, gr.update(visible=False), None
+        
+        # 语法检查并记录
+        errors = check_grammar(user_text)
+        if errors:
+            grammar_records.append({
+                "text": user_text,
+                "errors": errors
+            })
+        
         history.append({"role": "user", "content": user_text})
         messages_for_api = [{"role": "system", "content": SYSTEM_PROMPT}]
         for msg in history:
@@ -36,12 +46,12 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
         assistant_reply = chat_with_deepseek(messages_for_api)
         history.append({"role": "assistant", "content": assistant_reply})
         audio_path = text_to_speech_sync(assistant_reply)
-        return "", history, history, gr.update(visible=False), audio_path
+        return "", history, history, grammar_records, gr.update(visible=False), audio_path
 
-    def process_voice(audio_file, history):
+    def process_voice(audio_file, history, grammar_records):
         print(f"=== 收到音频文件: {audio_file} ===")
         if audio_file is None:
-            return "", history, history, gr.update(visible=False), None
+            return "", history, history, grammar_records, gr.update(visible=False), None
         
         # 语音识别 + 获取信心度特征
         user_text, features = transcribe_audio(audio_file, return_features=True)
@@ -62,7 +72,15 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
             assistant_reply = "Sorry, I didn't catch that. Could you please repeat?"
             history.append({"role": "assistant", "content": assistant_reply})
             audio_path = text_to_speech_sync(assistant_reply)
-            return "", history, history, menu_update, audio_path
+            return "", history, history, grammar_records, menu_update, audio_path
+        
+        # 语法检查并记录（仅对识别成功的文本）
+        errors = check_grammar(user_text)
+        if errors:
+            grammar_records.append({
+                "text": user_text,
+                "errors": errors
+            })
         
         # 正常识别，进行对话
         history.append({"role": "user", "content": user_text})
@@ -73,28 +91,29 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
         assistant_reply = chat_with_deepseek(messages_for_api)
         history.append({"role": "assistant", "content": assistant_reply})
         audio_path = text_to_speech_sync(assistant_reply)
-        return "", history, history, menu_update, audio_path
+        return "", history, history, grammar_records, menu_update, audio_path
 
     # 绑定事件
     send_text_btn.click(
         send_message,
-        inputs=[text_input, state],
-        outputs=[text_input, state, chatbot, menu_img, audio_output]
+        inputs=[text_input, state, grammar_state],
+        outputs=[text_input, state, chatbot, grammar_state, menu_img, audio_output]
     )
     
     send_voice_btn.click(
         process_voice,
-        inputs=[audio_input, state],
-        outputs=[text_input, state, chatbot, menu_img, audio_output]
+        inputs=[audio_input, state, grammar_state],
+        outputs=[text_input, state, chatbot, grammar_state, menu_img, audio_output]
     )
     
-    # 已删除 low_confidence_btn 的 click 事件
-    
     def clear_all():
-        return [], [], gr.update(visible=False), None, ""
+        return [], [], [], gr.update(visible=False), None, ""
     
-    clear_btn.click(clear_all, outputs=[state, chatbot, menu_img, audio_output, text_input])
-    demo.load(lambda: [], outputs=state)
+    clear_btn.click(
+        clear_all,
+        outputs=[state, chatbot, grammar_state, menu_img, audio_output, text_input]
+    )
+    demo.load(lambda: ([], []), outputs=[state, grammar_state])
 
 if __name__ == "__main__":
     demo.launch()
