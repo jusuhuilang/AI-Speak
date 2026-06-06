@@ -1,97 +1,10 @@
-import os
-import asyncio
-import tempfile
-import json
-import wave
-from openai import OpenAI
 import gradio as gr
-import edge_tts
-from vosk import Model, KaldiRecognizer
+from config import SYSTEM_PROMPT
+from tts import text_to_speech_sync
+from asr import transcribe_audio
+from utils import chat_with_deepseek
 
-# ========== 1. 配置 DeepSeek ==========
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    # 测试时可临时写入，提交前务必改为环境变量
-    DEEPSEEK_API_KEY = "sk-你的真实key"  # 替换成你的 Key
-
-client = OpenAI(
-    api_key=DEEPSEEK_API_KEY,
-    base_url="https://api.deepseek.com/v1",
-    timeout=30,
-    max_retries=2
-)
-
-SYSTEM_PROMPT = (
-    "You are a friendly travel assistant. "
-    "Help users with airport procedures (check-in, security, baggage), hotel services (booking, check-in, room service), "
-    "and city transportation (subway, bus, taxi, walking directions). "
-    "Keep responses short (1-2 sentences). Ask clarifying questions when needed. "
-    "After 5 exchanges, say 'Safe travels! Enjoy your trip.' to conclude."
-)
-
-# ========== 2. TTS (Edge TTS) ==========
-async def _text_to_speech(text: str, voice: str = "en-US-JennyNeural"):
-    communicate = edge_tts.Communicate(text, voice)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
-        tmp_path = tmp_file.name
-    await communicate.save(tmp_path)
-    return tmp_path
-
-def text_to_speech_sync(text: str):
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(_text_to_speech(text))
-    except Exception as e:
-        print(f"TTS 错误: {e}")
-        return None
-    finally:
-        loop.close()
-
-# ========== 3. Vosk 语音识别 ==========
-VOSK_MODEL_PATH = "vosk-model-small-en-us-0.15"
-if not os.path.exists(VOSK_MODEL_PATH):
-    raise ValueError(f"找不到 Vosk 模型: {VOSK_MODEL_PATH}，请下载并解压到当前目录")
-
-vosk_model = Model(VOSK_MODEL_PATH)
-
-def transcribe_audio(audio_file_path):
-    if not audio_file_path:
-        return ""
-    try:
-        wf = wave.open(audio_file_path, "rb")
-        rec = KaldiRecognizer(vosk_model, wf.getframerate())
-        texts = []
-        while True:
-            data = wf.readframes(4000)
-            if len(data) == 0:
-                break
-            if rec.AcceptWaveform(data):
-                res = json.loads(rec.Result())
-                if 'text' in res and res['text']:
-                    texts.append(res['text'])
-        final = json.loads(rec.FinalResult())
-        if 'text' in final and final['text']:
-            texts.append(final['text'])
-        result = " ".join(texts).strip()
-        return result if result else "无法识别"
-    except Exception as e:
-        return f"识别错误: {str(e)}"
-
-# ========== 4. DeepSeek 对话 ==========
-def chat_with_deepseek(messages):
-    try:
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=messages,
-            temperature=0.7
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        print(f"DeepSeek API 错误: {e}")
-        return f"Sorry, I'm having trouble connecting. Please try again later."
-
-# ========== 5. Gradio 界面 ==========
+# ========== Gradio 界面 ==========
 with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Soft()) as demo:
     gr.Markdown("# ✈️ AI 英语口语陪练（出行助手）")
     gr.Markdown("通过语音或文字练习机场、酒店、交通场景的英语对话。")
@@ -150,7 +63,6 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
     )
 
     def show_menu_image():
-        # 使用无防盗链的图片
         img_url = "https://picsum.photos/id/104/300/200"
         return gr.update(visible=True, value=img_url)
 
