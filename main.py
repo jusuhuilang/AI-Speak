@@ -1,9 +1,10 @@
 import gradio as gr
 import matplotlib.pyplot as plt
 import numpy as np
-from io import BytesIO
-import base64
-from config import CONFIDENCE_THRESHOLD, HINT_IMAGE_URL, PROMPT_EASY, PROMPT_MEDIUM, PROMPT_HARD
+import tempfile
+import os
+from config import CONFIDENCE_THRESHOLD, PROMPT_EASY, PROMPT_MEDIUM, PROMPT_HARD
+from config import SCENE_KEYWORDS, HINT_IMAGE_MAP
 from tts import text_to_speech_sync
 from asr import transcribe_audio
 from utils import chat_with_deepseek
@@ -26,29 +27,32 @@ def get_dynamic_prompt(grammar_records, last_n=5):
     else:
         return PROMPT_HARD
 
-# ========== 生成报告函数 ==========
+# ========== 场景图片选择函数 ==========
+def get_scene_image(history):
+    recent_user_msgs = [msg["content"] for msg in history[-3:] if msg["role"] == "user"]
+    all_text = " ".join(recent_user_msgs).lower()
+    for scene, keywords in SCENE_KEYWORDS.items():
+        for kw in keywords:
+            if kw in all_text:
+                return HINT_IMAGE_MAP[scene]
+    return HINT_IMAGE_MAP["general"]
+
+# ========== 生成报告函数（使用临时文件，返回 Markdown 文本） ==========
 def generate_report(history, grammar_records, confidence_records):
-    """
-    生成雷达图和高频错误文本
-    """
-    # 1. 计算各项指标
-    # 流利度: 平均信心度 (confidence)
+    print("生成报告...")
+    # 计算各项指标
     fluency = np.mean(confidence_records) if confidence_records else 0.5
-    # 词汇: 简单用平均句子长度 / 20 (假设最长20词满分)
     user_messages = [msg["content"] for msg in history if msg["role"] == "user" and not msg["content"].startswith("[语音]")]
     avg_len = np.mean([len(msg.split()) for msg in user_messages]) if user_messages else 0
     vocabulary = min(1.0, avg_len / 20.0)
-    # 语法: 错误句子占比 (有语法错误的句子数 / 总用户句子数)
     total_sentences = len(grammar_records)
     error_sentences = sum(1 for r in grammar_records if r.get("errors"))
     grammar_score = 1.0 - (error_sentences / total_sentences) if total_sentences > 0 else 0.5
-    # 发音: 暂时用平均音量 (从 confidence_records 中无法直接获取音量，简化用 fluency 代替)
-    pronunciation = fluency  # 或者单独记录 volume，但为简化先用流利度
+    pronunciation = fluency
 
     scores = [fluency, vocabulary, grammar_score, pronunciation]
     labels = ['Fluency', 'Vocabulary', 'Grammar', 'Pronunciation']
 
-    # 2. 绘制雷达图
     angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
     scores += scores[:1]
     angles += angles[:1]
@@ -60,16 +64,13 @@ def generate_report(history, grammar_records, confidence_records):
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(labels, fontsize=10)
     ax.set_title("User Performance", size=14, pad=20)
-    
-    # 转换为 base64 图片
-    buf = BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    img_base64 = base64.b64encode(buf.read()).decode()
-    plt.close(fig)
-    img_data = f"data:image/png;base64,{img_base64}"
 
-    # 3. 高频错误统计
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
+        plt.savefig(tmpfile.name, format='png', bbox_inches='tight')
+        tmp_path = tmpfile.name
+    plt.close(fig)
+
+    # 高频错误统计
     error_counts = {}
     for record in grammar_records:
         for err in record.get("errors", []):
@@ -81,7 +82,8 @@ def generate_report(history, grammar_records, confidence_records):
     else:
         error_text = "太棒了！没有发现语法错误，继续保持！"
 
-    return gr.update(visible=True, value=img_data), gr.update(visible=True, value=error_text)
+    print("报告生成完成，错误文本:", error_text)
+    return gr.update(visible=True, value=tmp_path), gr.update(visible=True, value=error_text)
 
 # ========== Gradio 界面 ==========
 with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Soft()) as demo:
@@ -100,10 +102,11 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
         clear_btn = gr.Button("清除对话历史")
         report_btn = gr.Button("📊 生成总结报告", variant="primary")
 
-    menu_img = gr.Image(value=None, label="🗺️ 出行提示", visible=False)
+    menu_img = gr.Image(value=None, label="🗺️ 出行提示", visible=False, height=500, width=600)
     audio_output = gr.Audio(label="AI 语音回复", autoplay=True, visible=True)
     report_img = gr.Image(label="能力雷达图", visible=False)
-    report_text = gr.Textbox(label="语法错误总结", visible=False, lines=10)
+    # 关键修改：将 Textbox 改为 Markdown，避免加载问题
+    report_text = gr.Markdown(label="语法错误总结", visible=False)
 
     state = gr.State([])           # 对话历史
     grammar_state = gr.State([])   # 语法错误记录
@@ -116,8 +119,7 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
         errors = check_grammar(user_text)
         if errors:
             grammar_records.append({"text": user_text, "errors": errors})
-        # 文本输入没有信心度，可以附加一个默认值0.8（或忽略）
-        confidence_records.append(0.8)  # 文本输入默认流利度较高
+        confidence_records.append(0.8)
 
         history.append({"role": "user", "content": user_text})
         dynamic_prompt = get_dynamic_prompt(grammar_records)
@@ -142,7 +144,8 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
         print(f"特征: {features}")
 
         if confidence < CONFIDENCE_THRESHOLD and user_text not in ["无法识别", "识别错误"] and not user_text.startswith("识别错误"):
-            menu_update = gr.update(visible=True, value=HINT_IMAGE_URL)
+            image_path = get_scene_image(history)
+            menu_update = gr.update(visible=True, value=image_path)
         else:
             menu_update = gr.update(visible=False)
 
@@ -153,7 +156,6 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
             audio_path = text_to_speech_sync(assistant_reply)
             return "", history, history, grammar_records, confidence_records, menu_update, audio_path
 
-        # 记录信心度
         confidence_records.append(confidence)
 
         errors = check_grammar(user_text)
@@ -171,8 +173,11 @@ with gr.Blocks(title="AI 英语口语陪练 - 出行助手", theme=gr.themes.Sof
         audio_path = text_to_speech_sync(assistant_reply)
         return "", history, history, grammar_records, confidence_records, menu_update, audio_path
 
+    # 清除所有状态：注意返回顺序与 outputs 一致
     def clear_all():
-        return [], [], [], [], gr.update(visible=False), None, "", gr.update(visible=False), gr.update(visible=False)
+        return ([], [], [], [], 
+                gr.update(visible=False), None, "", 
+                gr.update(visible=False), gr.update(visible=False, value=""))
 
     def on_report_click(history, grammar_records, confidence_records):
         img_update, text_update = generate_report(history, grammar_records, confidence_records)

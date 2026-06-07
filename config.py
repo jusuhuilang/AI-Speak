@@ -17,7 +17,7 @@ SYSTEM_PROMPT = (
 VOSK_MODEL_PATH = "vosk-model-small-en-us-0.15"
 
 # ========== 自动情感识别配置 ==========
-CONFIDENCE_THRESHOLD = 0.3          # 低于此值弹出提示图片
+CONFIDENCE_THRESHOLD = 0.6         # 低于此值弹出提示图片
 HINT_IMAGE_URL = "https://picsum.photos/id/104/300/200"   # 提示图片URL（可更换）
 
 # ========== 难度自适应配置 ==========
@@ -46,3 +46,19 @@ PROMPT_HARD = (
 
 # 默认使用的模板（初始中等）
 DEFAULT_PROMPT = PROMPT_MEDIUM
+
+# ========== 动态场景提示图片配置 ==========
+# 场景关键词映射（根据用户输入中的关键词选择图片）
+SCENE_KEYWORDS = {
+    "airport": ["airport", "flight", "check-in", "security", "baggage", "boarding", "gate", "departure", "arrival", "counter"],
+    "hotel": ["hotel", "room", "reservation", "check-in", "check-out", "lobby", "suite", "wake-up", "passport"],
+    "transport": ["subway", "metro", "train", "bus", "taxi", "station", "direction", "map", "ride", "city center"]
+}
+
+# 图片路径映射
+HINT_IMAGE_MAP = {
+    "airport": "assets/airport.jpg",
+    "hotel": "assets/hotel.jpg",
+    "transport": "assets/transport.jpg",
+    "general": "assets/general.jpg"
+}
