@@ -1,4 +1,4 @@
-✈️ AI 英语口语陪练 - 出行助手
+# ✈️ AI 英语口语陪练 - 出行助手
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![Gradio](https://img.shields.io/badge/Gradio-6.16.0-orange)](https://gradio.app/)
@@ -6,13 +6,13 @@
 
 > 基于大语言模型的智能英语陪练应用，专为旅行场景设计。支持语音对话、自动情感识别、难度自适应和课后总结报告，帮助用户在机场、酒店、交通等场景中自信开口说英语。
 
-🎥 演示视频
+## 🎥 演示视频
 
 [![观看Demo](https://img.shields.io/badge/▶️-点击观看%20Demo-ff69b4)](https://b23.tv/nQoxFXZ)
 
 > 3分钟快速了解所有功能：文字对话、语音识别、自动弹图、难度自适应、雷达图报告。
 
-✨ 主要功能
+## ✨ 主要功能
 
 | 模块 | 说明 |
 |------|------|
@@ -25,13 +25,13 @@
 | 💬 **文字/语音混合输入** | 支持键盘打字或麦克风录音，自由切换 |
 | 🗂️ **对话历史管理** | 一键清除历史，重新开始 |
 
-📸 界面预览
+## 📸 界面预览
 
 （可在此处插入一张应用截图，例如 `assets/screenshot.png`）
 
-🚀 快速开始
+## 🚀 快速开始
 
- 1. 克隆仓库
+### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/jusuhuilang/AI-Speak.git
